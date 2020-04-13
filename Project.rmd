@@ -1,0 +1,115 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Joel Varela Donado"
+date: "4/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction and Background
+
+This is the course project for Practical Machine Learning. It will predict how well a user is doing exercises, with data from the accelerometers on the belt, forearm, arm, and dumbbell of 6 participants. They were asked to perform the exercise of barbell lifts incorrectly in 5 different ways. More information: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har 
+This report describes how a machine learning algorithm was developed, tested, and picked to be used to predict the outcome.
+
+### Loading, Inspecting, Cleaning Data
+
+```{r dataInput}
+# Starting by reading the training file and loading the library
+training=read.csv("pml-training.csv")
+testing=read.csv("pml-testing.csv")
+library(caret)
+str(training)
+```
+
+There are variables with lots of NAs and some that are clearly not needed for example user names and X (line number). Therefore we proceed to clean them from the data set.
+
+``` {r dataCleaning, cache = TRUE}
+# Removing names, X, timestamps and windows.
+filterRegEx = "timestamp|window"
+training$user_name = NULL
+training$X = NULL
+training=training[, -grep(filterRegEx, names(training))]
+
+testing$user_name = NULL
+testing$X = NULL
+testing=testing[, -grep(filterRegEx, names(testing))]
+
+# There are variables with a lot of NAs. If the vast majority of column values (> 95%) is
+# NA or empty then we exclude it from the study.
+
+rmvMajorityNAs = function(x) {
+    indexToRemove = c()
+    for (i in 1:length(x)) {
+        if (mean(is.na(x[,i]) || x[,i] =="") > 0.95) {
+            indexToRemove = c(indexToRemove, i)
+        }
+    }
+    x=x[,-indexToRemove]
+}
+
+training=rmvMajorityNAs(training)
+testing=rmvMajorityNAs(testing)
+str(training)
+```
+
+The above shows the final number of variables. The same operation was performed on the official testing set for the Course.
+
+## Starting the training model
+
+We will setup two models with Random Forest and Gradient Boosting, and compare their accuracy.
+Will divide the training set to 70% of training and 30% of test validation.
+``` {r }
+set.seed(412)
+inTrain=createDataPartition(y=training$classe, p=0.7, list=FALSE)
+trainingMain = training[inTrain, ]
+trainingTestVal = training[-inTrain, ]
+```
+
+Now that we have split our training set, we are creating the models.
+
+### First Model: Random Forest
+
+```{r random_forest_calc, cache=TRUE}
+RFModel = train(classe ~., data=trainingMain, method="rf")
+RFModel
+plot(RFModel, main="Random Forest Model")
+```
+
+The model's overall accuracy is 0.989 with 27 variables.
+We'll test with the out-of-sample set from the training data.
+
+``` {r }
+# Testing the Random Forest with the out-of-sample test set
+predictTestVal = predict(RFModel, trainingTestVal)
+cmRFTraining = confusionMatrix(trainingTestVal$classe, predictTestVal)
+cmRFTraining
+```
+
+The accuracy is 0.9927 in this out-of-sample test. 
+
+### Second Model: Gradient Boosting 
+``` {r gbmodel_calc, cache=TRUE}
+GBMModel = train(classe ~., data=trainingMain, method="gbm", verbose = FALSE)
+GBMModel
+plot(GBMModel, main="Gradient Boosting Model")
+```
+
+The accuracy for the final model is 0.957 with 150 trees and depth of 3.
+
+``` {r }
+predictTestValGBM = predict(GBMModel, trainingTestVal)
+cmGBMTraining = confusionMatrix(trainingTestVal$classe, predictTestValGBM)
+cmGBMTraining
+```
+
+The accuracy is 0.9613 in this out-of-sample test. 
+
+## Conclusion
+We are picking the Random Forest Model for solution because of its greater accuracy on the same sample set, 0.989 and Kappa of 0.9916.
+Here are the predictions for the testing set:
+``` {r }
+predict(RFModel, testing)
+```
